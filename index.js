@@ -69,7 +69,12 @@ const addPassword = async (masterPassword) => {
       message: chalk.blue("Enter the password tag:"),
     },
   ]);
-  const passwords = JSON.parse(readFileSync("./passwords.json", "utf-8"));
+  const passwords = JSON.parse(
+    CryptoJS.AES.decrypt(
+      readFileSync("./passwords", "utf-8"),
+      masterPassword
+    ).toString(CryptoJS.enc.Utf8)
+  );
   for (let i = 0; i < passwords.length; i++) {
     if (passwords[i].passwordTag === passwordTag.passwordTag) {
       console.log(chalk.red("Password tag already exists!"));
@@ -113,7 +118,11 @@ const addPassword = async (masterPassword) => {
     password: CryptoJS.AES.encrypt(password, masterPassword).toString(),
   };
   passwords.push(newPassword);
-  writeFileSync("./passwords.json", JSON.stringify(passwords));
+  const encryptedData = CryptoJS.AES.encrypt(
+    JSON.stringify(passwords),
+    masterPassword
+  ).toString();
+  writeFileSync("./passwords", encryptedData);
   console.log(chalk.green("Password added successfully!"));
 };
 
@@ -125,7 +134,12 @@ const searchPassword = async (masterPassword) => {
       message: chalk.blue("Enter the password tag:"),
     },
   ]);
-  const passwords = JSON.parse(readFileSync("./passwords.json", "utf-8"));
+  const passwords = JSON.parse(
+    CryptoJS.AES.decrypt(
+      readFileSync("./passwords", "utf-8"),
+      masterPassword
+    ).toString(CryptoJS.enc.Utf8)
+  );
   for (let i = 0; i < passwords.length; i++) {
     if (passwords[i].passwordTag === passwordTag.passwordTag) {
       const password = CryptoJS.AES.decrypt(
@@ -156,7 +170,7 @@ const searchPassword = async (masterPassword) => {
   console.log(chalk.red("Password tag not found!"));
 };
 
-const deletePassword = async () => {
+const deletePassword = async (masterPassword) => {
   const passwordTag = await inquirer.prompt([
     {
       type: "input",
@@ -164,11 +178,21 @@ const deletePassword = async () => {
       message: chalk.blue("Enter the password tag:"),
     },
   ]);
-  const passwords = JSON.parse(readFileSync("./passwords.json", "utf-8"));
+  const passwords = JSON.parse(
+    CryptoJS.AES.decrypt(
+      readFileSync("./passwords", "utf-8"),
+      masterPassword
+    ).toString(CryptoJS.enc.Utf8)
+  );
+
   for (let i = 0; i < passwords.length; i++) {
     if (passwords[i].passwordTag === passwordTag.passwordTag) {
       passwords.splice(i, 1);
-      writeFileSync("./passwords.json", JSON.stringify(passwords));
+      const encryptedData = CryptoJS.AES.encrypt(
+        JSON.stringify(passwords),
+        masterPassword
+      ).toString();
+      writeFileSync("./passwords", encryptedData);
       console.log(chalk.green("Password deleted successfully!"));
       return;
     }
@@ -180,9 +204,10 @@ const main = async () => {
   await displayHeader();
   const masterPassword = await getMasterPassword("Enter your master password:");
   try {
-    readFileSync("./passwords.json", "utf-8");
+    readFileSync("./passwords", "utf-8");
   } catch (err) {
-    writeFileSync("./passwords.json", JSON.stringify([]));
+    const encryptedData = CryptoJS.AES.encrypt("[]", masterPassword).toString();
+    writeFileSync("./passwords", encryptedData);
   }
   while (true) {
     const choice = await displayMenu();
@@ -194,7 +219,7 @@ const main = async () => {
         await searchPassword(masterPassword);
         break;
       case "Delete password":
-        await deletePassword();
+        await deletePassword(masterPassword);
         break;
       case "Exit":
         process.exit(0);
