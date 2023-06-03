@@ -19,6 +19,7 @@ const displayHeader = async () => {
       })
     )
   );
+
   await sleep(4000);
   headerAnimation.stop();
   console.clear();
@@ -56,31 +57,48 @@ const getMasterPassword = async (message) => {
       name: "masterPassword",
       message: chalk.blue(message),
       mask: "*",
+      validate: (input) => {
+        if (
+          !input.match("^(?=.*[a-zA-z])(?=.*[0-9])(?=.*[!@#$%^&*()_+]).{8,}$")
+        ) {
+          return chalk.red(
+            "Password must be at least 8 characters long and contain at least one letter, one number and one special character."
+          );
+        }
+        return true;
+      },
     },
   ]);
   return masterPassword.masterPassword;
 };
 
 const addPassword = async (masterPassword) => {
-  const passwordTag = await inquirer.prompt([
-    {
-      type: "input",
-      name: "passwordTag",
-      message: chalk.blue("Enter the password tag:"),
-    },
-  ]);
   const passwords = JSON.parse(
     CryptoJS.AES.decrypt(
       readFileSync("./passwords", "utf-8"),
       masterPassword
     ).toString(CryptoJS.enc.Utf8)
   );
-  for (let i = 0; i < passwords.length; i++) {
-    if (passwords[i].passwordTag === passwordTag.passwordTag) {
-      console.log(chalk.red("Password tag already exists!"));
-      return;
-    }
-  }
+
+  const passwordTag = await inquirer.prompt([
+    {
+      type: "input",
+      name: "passwordTag",
+      message: chalk.blue("Enter the password tag:"),
+      validate: (input) => {
+        if (!input.match("^[a-zA-Z0-9]+$")) {
+          return chalk.red("Password tag must be alphanumeric.");
+        }
+        for (let i = 0; i < passwords.length; i++) {
+          if (passwords[i].passwordTag === input) {
+            return chalk.red("Password tag already exists!");
+          }
+        }
+        return true;
+      },
+    },
+  ]);
+
   const choice = await inquirer.prompt([
     {
       type: "list",
@@ -91,6 +109,7 @@ const addPassword = async (masterPassword) => {
       choices: ["Generate password", "Enter my own"],
     },
   ]);
+
   let password;
   if (choice.choice === "Generate password") {
     const length = Math.floor(Math.random() * (26 - 16) + 16);
@@ -109,15 +128,23 @@ const addPassword = async (masterPassword) => {
         name: "password",
         message: chalk.blue("Enter your password:"),
         mask: "*",
+        validate: (input) => {
+          if (input.length === 0) {
+            return chalk.red("Password cannot be empty!");
+          }
+          return true;
+        },
       },
     ]);
     password = passwordInput.password;
   }
+
   const newPassword = {
     passwordTag: passwordTag.passwordTag,
     password: CryptoJS.AES.encrypt(password, masterPassword).toString(),
   };
   passwords.push(newPassword);
+
   const encryptedData = CryptoJS.AES.encrypt(
     JSON.stringify(passwords),
     masterPassword
@@ -127,19 +154,27 @@ const addPassword = async (masterPassword) => {
 };
 
 const searchPassword = async (masterPassword) => {
-  const passwordTag = await inquirer.prompt([
-    {
-      type: "input",
-      name: "passwordTag",
-      message: chalk.blue("Enter the password tag:"),
-    },
-  ]);
   const passwords = JSON.parse(
     CryptoJS.AES.decrypt(
       readFileSync("./passwords", "utf-8"),
       masterPassword
     ).toString(CryptoJS.enc.Utf8)
   );
+
+  const passwordTag = await inquirer.prompt([
+    {
+      type: "input",
+      name: "passwordTag",
+      message: chalk.blue("Enter the password tag:"),
+      validate: (input) => {
+        if (!input.match("^[a-zA-Z0-9]+$")) {
+          return chalk.red("Password tag must be alphanumeric.");
+        }
+        return true;
+      },
+    },
+  ]);
+
   for (let i = 0; i < passwords.length; i++) {
     if (passwords[i].passwordTag === passwordTag.passwordTag) {
       const password = CryptoJS.AES.decrypt(
@@ -155,14 +190,9 @@ const searchPassword = async (masterPassword) => {
           message: chalk.blue("Do you want to see the password?"),
         },
       ]);
+
       if (answer.confirm) {
-        const text = chalkAnimation.neon(chalk.green(password));
-        await sleep(1000);
-        text.stop();
-        await sleep(4000);
-        text.replace("");
-        text.frame();
-        text.render();
+        console.log(chalk.green(password));
       }
       return;
     }
@@ -171,19 +201,26 @@ const searchPassword = async (masterPassword) => {
 };
 
 const deletePassword = async (masterPassword) => {
-  const passwordTag = await inquirer.prompt([
-    {
-      type: "input",
-      name: "passwordTag",
-      message: chalk.blue("Enter the password tag:"),
-    },
-  ]);
   const passwords = JSON.parse(
     CryptoJS.AES.decrypt(
       readFileSync("./passwords", "utf-8"),
       masterPassword
     ).toString(CryptoJS.enc.Utf8)
   );
+
+  const passwordTag = await inquirer.prompt([
+    {
+      type: "input",
+      name: "passwordTag",
+      message: chalk.blue("Enter the password tag:"),
+      validate: (input) => {
+        if (!input.match("^[a-zA-Z0-9]+$")) {
+          return chalk.red("Password tag must be alphanumeric.");
+        }
+        return true;
+      },
+    },
+  ]);
 
   for (let i = 0; i < passwords.length; i++) {
     if (passwords[i].passwordTag === passwordTag.passwordTag) {
@@ -204,7 +241,10 @@ const main = async () => {
   await displayHeader();
   const masterPassword = await getMasterPassword("Enter your master password:");
   try {
-    readFileSync("./passwords", "utf-8");
+    const content = readFileSync("./passwords", "utf-8");
+    if (content.length === 0) {
+      throw new Error();
+    }
   } catch (err) {
     const encryptedData = CryptoJS.AES.encrypt("[]", masterPassword).toString();
     writeFileSync("./passwords", encryptedData);
