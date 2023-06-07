@@ -10,7 +10,7 @@ this tool is for managing your passwords on your local machien with one master p
 
 ##  Project Run
 
-https://github.com/amrmousa1682/password-manager/assets/70464867/7c29ea36-8bc5-4e96-9da6-58e116b83d51
+![ezgif-5-8a6de93c35](https://github.com/amrmousa1682/password-manager/assets/70464867/69587751-7b3b-4baf-96ec-f3b7b474da60)
 
 ## Project Setup
 
