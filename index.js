@@ -3,7 +3,7 @@ import chalk from "chalk";
 import chalkAnimation from "chalk-animation";
 import figlet from "figlet";
 import inquirer from "inquirer";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 import CryptoJS from "crypto-js";
 import clipboardy from "clipboardy";
 
@@ -237,18 +237,54 @@ const deletePassword = async (masterPassword) => {
   console.log(chalk.red("Password tag not found!"));
 };
 
+const createNewMasterPassword = async () => {
+  let masterPassword, repeatMasterPassword;
+
+  do {
+    masterPassword = await getMasterPassword("Create master password:");
+    repeatMasterPassword = await getMasterPassword("Repeat the master password:");
+
+    if (masterPassword !== repeatMasterPassword) {
+      console.log(chalk.red("Passwords do not match. Please try again."));
+    }
+  } while (masterPassword !== repeatMasterPassword);
+
+  console.log(chalk.green("Master password set successfully."));
+  return masterPassword;
+};
+
+const isMasterPasswordCorrect = (masterPassword, content) => {
+  try {
+    JSON.parse(
+      CryptoJS.AES.decrypt(
+        content,
+        masterPassword
+      ).toString(CryptoJS.enc.Utf8));
+
+    console.log(chalk.green("Master password is correct."));
+    return true;
+  } catch (error) {
+    console.log(chalk.red("Master password incorrect or file corrupted."));
+    return false;
+  }
+};
+
 const main = async () => {
   await displayHeader();
-  const masterPassword = await getMasterPassword("Enter your master password:");
-  try {
-    const content = readFileSync("./passwords", "utf-8");
-    if (content.length === 0) {
-      throw new Error();
-    }
-  } catch (err) {
-    const encryptedData = CryptoJS.AES.encrypt("[]", masterPassword).toString();
-    writeFileSync("./passwords", encryptedData);
+  if (!existsSync("./passwords")) {
+
+    writeFileSync("./passwords", CryptoJS.AES.encrypt(
+      "[]",
+      await createNewMasterPassword()
+    ).toString());
   }
+  const content = readFileSync("./passwords", "utf-8");
+  let masterPassword;
+  do {
+    masterPassword = await getMasterPassword("Enter your master password:");
+  }
+  while (!isMasterPasswordCorrect(masterPassword, content))
+
   while (true) {
     const choice = await displayMenu();
     switch (choice) {
@@ -262,6 +298,7 @@ const main = async () => {
         await deletePassword(masterPassword);
         break;
       case "Exit":
+        console.log(chalk.yellow("Exiting..."));
         process.exit(0);
     }
   }
