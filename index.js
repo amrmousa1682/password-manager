@@ -8,6 +8,18 @@ import CryptoJS from "crypto-js";
 import clipboardy from "clipboardy";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const PASSWORDS_FILE = "./passwords";
+const FILE_ENCODING = "utf-8";
+const MenuChoice = {
+  ADD_NEW_PASSWORD: "Add new password",
+  SEARCH_FOR_PASSWORD: "Search for password",
+  DELETE_PASSWORD: "Delete password",
+  EXIT: "Exit",
+};
+const PasswordChoice = {
+  GENERATE_PASSWORD: "Generate password",
+  ENTER_PASSWORD: "Enter password",
+};
 
 const displayHeader = async () => {
   console.clear();
@@ -33,34 +45,27 @@ const displayHeader = async () => {
   );
 };
 
-const displayMenu = async () => {
-  const menu = await inquirer.prompt([
+const getMenuChoice = async () => {
+  const menuInput = await inquirer.prompt([
     {
       type: "list",
-      name: "menu",
+      name: "choice",
       message: chalk.blue("What would you like to do?"),
-      choices: [
-        "Add new password",
-        "Search for password",
-        "Delete password",
-        "Exit",
-      ],
+      choices: Object.values(MenuChoice),
     },
   ]);
-  return menu.menu;
+  return menuInput.choice;
 };
 
-const getMasterPassword = async (message) => {
-  const masterPassword = await inquirer.prompt([
+const getPassword = async (message) => {
+  const { password } = await inquirer.prompt([
     {
       type: "password",
-      name: "masterPassword",
+      name: "password",
       message: chalk.blue(message),
       mask: "*",
       validate: (input) => {
-        if (
-          !input.match("^(?=.*[a-zA-z])(?=.*[0-9])(?=.*[!@#$%^&*()_+]).{8,}$")
-        ) {
+        if (!input.match("^(?=.*[a-zA-z])(?=.*[0-9])(?=.*[!@#$%^&*()_+]).{8,}$")) {
           return chalk.red(
             "Password must be at least 8 characters long and contain at least one letter, one number and one special character."
           );
@@ -69,18 +74,11 @@ const getMasterPassword = async (message) => {
       },
     },
   ]);
-  return masterPassword.masterPassword;
+  return password;
 };
 
-const addPassword = async (masterPassword) => {
-  const passwords = JSON.parse(
-    CryptoJS.AES.decrypt(
-      readFileSync("./passwords", "utf-8"),
-      masterPassword
-    ).toString(CryptoJS.enc.Utf8)
-  );
-
-  const passwordTag = await inquirer.prompt([
+const getPasswordTag = async () => {
+  const { passwordTag } = await inquirer.prompt([
     {
       type: "input",
       name: "passwordTag",
@@ -89,151 +87,131 @@ const addPassword = async (masterPassword) => {
         if (!input.match("^[a-zA-Z0-9]+$")) {
           return chalk.red("Password tag must be alphanumeric.");
         }
-        for (let i = 0; i < passwords.length; i++) {
-          if (passwords[i].passwordTag === input) {
-            return chalk.red("Password tag already exists!");
-          }
-        }
         return true;
       },
     },
   ]);
+  return passwordTag;
+};
 
-  const choice = await inquirer.prompt([
+const getPasswordOption = async () => {
+  const { choice } = await inquirer.prompt([
     {
       type: "list",
       name: "choice",
-      message: chalk.blue(
-        "Do you want to generate a password or enter your own?"
-      ),
-      choices: ["Generate password", "Enter my own"],
+      message: chalk.blue("Do you want to generate a password or enter your own?"),
+      choices: Object.values(PasswordChoice),
     },
   ]);
+  return choice;
+};
+const getConfirm = async (message) => {
+  const { confirm } = await inquirer.prompt([
+    {
+      type: "confirm",
+      name: "confirm",
+      message: chalk.blue(message),
+    },
+  ]);
+  return confirm;
+};
+const generatePassword = () => {
+  const length = Math.floor(Math.random() * (26 - 16) + 16);
+  const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+";
+  let password = "";
+  for (let i = 0; i < length; i++) {
+    password += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+  return password;
+};
+
+const encryptPasswords = (passwords, masterPassword) => {
+  const encryptedData = CryptoJS.AES.encrypt(JSON.stringify(passwords), masterPassword).toString();
+  writeFileSync(PASSWORDS_FILE, encryptedData);
+};
+const decryptPasswords = (masterPassword) => {
+  const passwords = JSON.parse(
+    CryptoJS.AES.decrypt(readFileSync(PASSWORDS_FILE, FILE_ENCODING), masterPassword).toString(
+      CryptoJS.enc.Utf8
+    )
+  );
+  return passwords;
+};
+const addPassword = async (masterPassword) => {
+  const passwords = decryptPasswords(masterPassword);
+
+  const passwordTag = await getPasswordTag();
+  const index = passwords.findIndex((password) => password.passwordTag === passwordTag);
+
+  if (index !== -1) {
+    if (await getConfirm("Password tag already exists. Do you want to overwrite it?")) {
+      passwords.splice(index, 1);
+    } else {
+      console.log(chalk.red("Password not added."));
+      return;
+    }
+  }
+
+  const choice = await getPasswordOption();
 
   let password;
-  if (choice.choice === "Generate password") {
-    const length = Math.floor(Math.random() * (26 - 16) + 16);
-    const characters =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+";
-    password = "";
-    for (let i = 0; i < length; i++) {
-      password += characters.charAt(
-        Math.floor(Math.random() * characters.length)
-      );
-    }
+  if (choice === PasswordChoice.GENERATE_PASSWORD) {
+    password = generatePassword();
   } else {
-    const passwordInput = await inquirer.prompt([
-      {
-        type: "password",
-        name: "password",
-        message: chalk.blue("Enter your password:"),
-        mask: "*",
-        validate: (input) => {
-          if (input.length === 0) {
-            return chalk.red("Password cannot be empty!");
-          }
-          return true;
-        },
-      },
-    ]);
-    password = passwordInput.password;
+    password = await getPassword("Enter your password:");
   }
 
   const newPassword = {
-    passwordTag: passwordTag.passwordTag,
+    passwordTag,
     password: CryptoJS.AES.encrypt(password, masterPassword).toString(),
   };
   passwords.push(newPassword);
+  encryptPasswords(passwords, masterPassword);
 
-  const encryptedData = CryptoJS.AES.encrypt(
-    JSON.stringify(passwords),
-    masterPassword
-  ).toString();
-  writeFileSync("./passwords", encryptedData);
   console.log(chalk.green("Password added successfully!"));
 };
 
 const searchPassword = async (masterPassword) => {
-  const passwords = JSON.parse(
-    CryptoJS.AES.decrypt(
-      readFileSync("./passwords", "utf-8"),
-      masterPassword
-    ).toString(CryptoJS.enc.Utf8)
-  );
+  const passwords = decryptPasswords(masterPassword);
 
-  const passwordTag = await inquirer.prompt([
-    {
-      type: "input",
-      name: "passwordTag",
-      message: chalk.blue("Enter the password tag:"),
-      validate: (input) => {
-        if (!input.match("^[a-zA-Z0-9]+$")) {
-          return chalk.red("Password tag must be alphanumeric.");
-        }
-        return true;
-      },
-    },
-  ]);
+  const passwordTag = await getPasswordTag();
 
-  for (let i = 0; i < passwords.length; i++) {
-    if (passwords[i].passwordTag === passwordTag.passwordTag) {
-      const password = CryptoJS.AES.decrypt(
-        passwords[i].password,
-        masterPassword
-      ).toString(CryptoJS.enc.Utf8);
-      clipboardy.writeSync(password);
+  const index = passwords.findIndex((password) => password.passwordTag === passwordTag);
+
+  if (index !== -1) {
+    if (await getConfirm("Do you want to copy the password to clipboard?")) {
+      clipboardy.writeSync(
+        CryptoJS.AES.decrypt(passwords[index].password, masterPassword).toString(CryptoJS.enc.Utf8)
+      );
       console.log(chalk.green("Password copied to clipboard!"));
-      const answer = await inquirer.prompt([
-        {
-          type: "confirm",
-          name: "confirm",
-          message: chalk.blue("Do you want to see the password?"),
-        },
-      ]);
-
-      if (answer.confirm) {
-        console.log(chalk.green(password));
-      }
-      return;
+    } else {
+      console.log(
+        chalk.green(
+          CryptoJS.AES.decrypt(passwords[index].password, masterPassword).toString(
+            CryptoJS.enc.Utf8
+          )
+        )
+      );
     }
+    return;
   }
   console.log(chalk.red("Password tag not found!"));
 };
 
 const deletePassword = async (masterPassword) => {
-  const passwords = JSON.parse(
-    CryptoJS.AES.decrypt(
-      readFileSync("./passwords", "utf-8"),
-      masterPassword
-    ).toString(CryptoJS.enc.Utf8)
-  );
+  const passwords = decryptPasswords(masterPassword);
 
-  const passwordTag = await inquirer.prompt([
-    {
-      type: "input",
-      name: "passwordTag",
-      message: chalk.blue("Enter the password tag:"),
-      validate: (input) => {
-        if (!input.match("^[a-zA-Z0-9]+$")) {
-          return chalk.red("Password tag must be alphanumeric.");
-        }
-        return true;
-      },
-    },
-  ]);
+  const passwordTag = await getPasswordTag();
 
-  for (let i = 0; i < passwords.length; i++) {
-    if (passwords[i].passwordTag === passwordTag.passwordTag) {
-      passwords.splice(i, 1);
-      const encryptedData = CryptoJS.AES.encrypt(
-        JSON.stringify(passwords),
-        masterPassword
-      ).toString();
-      writeFileSync("./passwords", encryptedData);
-      console.log(chalk.green("Password deleted successfully!"));
-      return;
-    }
+  const index = passwords.findIndex((password) => password.passwordTag === passwordTag);
+
+  if (index !== -1) {
+    passwords.splice(index, 1);
+    encryptPasswords(passwords, masterPassword);
+    console.log(chalk.green("Password deleted successfully!"));
+    return;
   }
+
   console.log(chalk.red("Password tag not found!"));
 };
 
@@ -241,8 +219,8 @@ const createNewMasterPassword = async () => {
   let masterPassword, repeatMasterPassword;
 
   do {
-    masterPassword = await getMasterPassword("Create master password:");
-    repeatMasterPassword = await getMasterPassword("Repeat the master password:");
+    masterPassword = await getPassword("Create master password:");
+    repeatMasterPassword = await getPassword("Repeat the master password:");
 
     if (masterPassword !== repeatMasterPassword) {
       console.log(chalk.red("Passwords do not match. Please try again."));
@@ -255,12 +233,7 @@ const createNewMasterPassword = async () => {
 
 const isMasterPasswordCorrect = (masterPassword, content) => {
   try {
-    JSON.parse(
-      CryptoJS.AES.decrypt(
-        content,
-        masterPassword
-      ).toString(CryptoJS.enc.Utf8));
-
+    decryptPasswords(masterPassword);
     console.log(chalk.green("Master password is correct."));
     return true;
   } catch (error) {
@@ -271,33 +244,31 @@ const isMasterPasswordCorrect = (masterPassword, content) => {
 
 const main = async () => {
   await displayHeader();
-  if (!existsSync("./passwords")) {
-
-    writeFileSync("./passwords", CryptoJS.AES.encrypt(
-      "[]",
-      await createNewMasterPassword()
-    ).toString());
+  if (!existsSync(PASSWORDS_FILE)) {
+    console.log(chalk.yellow("Welcome to password manager setup."));
+    const masterPassword = await createNewMasterPassword();
+    encryptPasswords([], masterPassword);
+    console.log(chalk.green("Password manager setup complete."));
   }
-  const content = readFileSync("./passwords", "utf-8");
+
   let masterPassword;
   do {
-    masterPassword = await getMasterPassword("Enter your master password:");
-  }
-  while (!isMasterPasswordCorrect(masterPassword, content))
+    masterPassword = await getPassword("Enter your master password:");
+  } while (!isMasterPasswordCorrect(masterPassword, readFileSync(PASSWORDS_FILE, FILE_ENCODING)));
 
   while (true) {
-    const choice = await displayMenu();
+    const choice = await getMenuChoice();
     switch (choice) {
-      case "Add new password":
+      case MenuChoice.ADD_NEW_PASSWORD:
         await addPassword(masterPassword);
         break;
-      case "Search for password":
+      case MenuChoice.SEARCH_FOR_PASSWORD:
         await searchPassword(masterPassword);
         break;
-      case "Delete password":
+      case MenuChoice.DELETE_PASSWORD:
         await deletePassword(masterPassword);
         break;
-      case "Exit":
+      case MenuChoice.EXIT:
         console.log(chalk.yellow("Exiting..."));
         process.exit(0);
     }
